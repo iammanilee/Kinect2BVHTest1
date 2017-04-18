@@ -53,9 +53,9 @@ inline void QuaternionToEulerAngles(const XMVECTOR& inQuat, XMVECTOR& outEuleria
 		bank = atan2(2 * q1x*q1w - 2 * q1y*q1z, 1 - 2 * sqx - 2 * sqz);
 	}
 
-	XMVectorSetX(outEulerianAngles, heading);
-	XMVectorSetX(outEulerianAngles, attitude);
-	XMVectorSetX(outEulerianAngles, bank);
+	outEulerianAngles = XMVectorSetX(outEulerianAngles, heading);
+	outEulerianAngles = XMVectorSetY(outEulerianAngles, attitude);
+	outEulerianAngles = XMVectorSetZ(outEulerianAngles, bank);
 
 	//std::get<0>(outEulerianAngles) = heading;			// pitch
 	//std::get<1>(outEulerianAngles) = attitude;			// yaw
