@@ -35,6 +35,8 @@ int main()
 
 	CBVH bvh;
 
+	//bvh.ImportRefPoseByBVHFile2("Girl Blendswap5_AddRoot3.bvh");
+
 	bvh.ImportRefPoseByBVHFile("Girl Blendswap5_AddRoot3.bvh");
 	//bvh.SetKinectBoneConfiguration();
 

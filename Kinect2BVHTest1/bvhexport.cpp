@@ -1,12 +1,24 @@
 #include "stdafx.h"
 
-#include "bvhexport.h"
 #include <assert.h>
 #include <string>
 #include <list>
 
 #include <iostream>
 #include <fstream>
+
+#include "bvhexport.h"
+#include "quaternion.h"
+
+void QuaternionToEulerAngles(const XMVECTOR& inQuat, XMVECTOR& outEulerianAngles)
+{
+	double eulerxyz[3];
+	Quaternion quaternion = inQuat;
+	quaternion.normalize();
+	quaternion2Euler(quaternion, eulerxyz, zyx);
+
+	outEulerianAngles = { (float)eulerxyz[0], (float)eulerxyz[1], (float)eulerxyz[2], 0.0f };
+}
 
 void CBVH::ResetJointParentIndex()
 {
@@ -77,6 +89,7 @@ void CBVH::GenerateLocalRotation()
 {
 	// SortedJointArray, RawFrames  두 순서는 동일하다.
 
+	int frameIndex = 0;
 	for (auto& frame : RawFrames)
 	{
 		int index = 0;
@@ -99,16 +112,33 @@ void CBVH::GenerateLocalRotation()
 						frameInfo.WorldQuat = XMQuaternionNormalize(frameInfo.WorldQuat);
 						frameInfo.LocalQuat = XMQuaternionMultiply(frameInfo.WorldQuat, XMQuaternionInverse(parentFrameInfo.WorldQuat));
 						frameInfo.LocalQuat = XMQuaternionNormalize(frameInfo.LocalQuat);
+
+						if (XMVectorGetX(frameInfo.LocalQuat) == 0.0f &&
+							XMVectorGetY(frameInfo.LocalQuat) == 0.0f &&
+							XMVectorGetZ(frameInfo.LocalQuat) == 0.0f &&
+							XMVectorGetW(frameInfo.LocalQuat) == 0.0f)
+						{
+							int a = 0;
+						}
 					}
 					else
 					{
 						frameInfo.LocalQuat = bvhJoint->RefQuat;
+						frameInfo.WorldQuat = frameInfo.LocalQuat*parentFrameInfo.WorldQuat;
 					}
 				}
 				else
 				{
-					frameInfo.WorldQuat = XMQuaternionNormalize(frameInfo.WorldQuat);
-					frameInfo.LocalQuat = XMQuaternionNormalize(frameInfo.WorldQuat);
+					if (frameInfo.Initialized)
+					{
+						frameInfo.WorldQuat = XMQuaternionNormalize(frameInfo.WorldQuat);
+						frameInfo.LocalQuat = XMQuaternionNormalize(frameInfo.WorldQuat);
+					}
+					else
+					{
+						frameInfo.WorldQuat = bvhJoint->RefQuat;
+						frameInfo.LocalQuat = bvhJoint->RefQuat;
+					}
 				}
 			}
 
@@ -116,6 +146,8 @@ void CBVH::GenerateLocalRotation()
 
 			++index;
 		}
+
+		frameIndex++;
 	}
 }
 
@@ -384,14 +416,20 @@ void CBVH::ImportRefPoseByBVHFile(const std::string & inFileName)
 
 			if (currentJoint)
 			{
-				currentJoint->RefQuat.m128_f32[0] = x;
-				currentJoint->RefQuat.m128_f32[1] = y;
-				currentJoint->RefQuat.m128_f32[2] = z;
-				currentJoint->RefQuat.m128_f32[3] = w;
+				currentJoint->RefQuat = { x, y, z, w };
 
 				currentJoint->RefQuat = XMQuaternionNormalize(currentJoint->RefQuat);
 				currentJoint->InvRefQuat = XMQuaternionInverse(currentJoint->RefQuat);
 			}
+		}
+		else if (content == "EULER")
+		{
+			float x, y, z;
+			myfile >> content; x = (float)std::atof(content.c_str());
+			myfile >> content; y = (float)std::atof(content.c_str());
+			myfile >> content; z = (float)std::atof(content.c_str());
+
+			currentJoint->RefEuler = { x, y, z };
 		}
 		else if (content == "End")
 		{
@@ -455,11 +493,99 @@ void CBVH::ImportRefPoseByBVHFile(const std::string & inFileName)
 	}
 }
 
+void CBVH::ImportRefPoseByBVHFile2(const std::string & inFileName)
+{
+	std::string content;
+	std::ifstream myfile;
+
+	myfile.open(inFileName, std::ios::in);
+
+	XMVECTOR rot;
+	XMVECTOR euler;
+
+	do
+	{
+		myfile >> content;
+
+		if (content == "ROOT")
+		{
+			myfile >> content;
+		}
+		else if (content == "JOINT")
+		{
+			myfile >> content;
+		}
+		else if (content == "OFFSET")
+		{
+			myfile >> content;
+			myfile >> content;
+			myfile >> content;
+		}
+		else if (content == "ROT")
+		{
+			float x, y, z, w;
+			myfile >> content; x = (float)std::atof(content.c_str());
+			myfile >> content; y = (float)std::atof(content.c_str());
+			myfile >> content; z = (float)std::atof(content.c_str());
+			myfile >> content; w = (float)std::atof(content.c_str());
+
+			rot = { x, y, z, w };
+		}
+		else if (content == "EULER")
+		{
+			float x, y, z;
+			myfile >> content; x = (float)std::atof(content.c_str());
+			myfile >> content; y = (float)std::atof(content.c_str());
+			myfile >> content; z = (float)std::atof(content.c_str());
+
+			euler = { x, y, z, 0.0f };
+
+			XMVECTOR convertedEuler = { 0.0f, 0.0f, 0.0f, 0.0f };
+			QuaternionToEulerAngles(rot, convertedEuler);
+
+			double eulerxyz[3];
+			Quaternion quaternion = rot;
+			quaternion.normalize();
+			quaternion2Euler(quaternion, eulerxyz, zyx);
+
+			if (abs(XMVectorGetX(euler) - XMVectorGetX(convertedEuler)) > 0.1f ||
+				abs(XMVectorGetY(euler) - XMVectorGetY(convertedEuler)) > 0.1f ||
+				abs(XMVectorGetZ(euler) - XMVectorGetZ(convertedEuler)) > 0.1f)
+			{
+				int a = 0;
+			}
+		}
+		else if (content == "End")
+		{
+			myfile >> content;
+		}
+		else if (content == "}")
+		{
+		}
+	} while (content != "MOTION");
+
+	myfile.close();
+}
+
 void CBVH::DataValidationTest()
 {
 	///////////////////////////////////////
 	// Reference pose로 받은 값을 검증
 	///////////////////////////////////////
+
+	for (auto const& value : SortedJointArray)
+	{
+		XMVECTOR convertedEuler;
+		QuaternionToEulerAngles(value->RefQuat, convertedEuler);
+
+		//if (abs(XMVectorGetX(convertedEuler) - XMVectorGetX(value->RefEuler)) > 0.1f ||
+		//	abs(XMVectorGetY(convertedEuler) - XMVectorGetY(value->RefEuler)) > 0.1f ||
+		//	abs(XMVectorGetZ(convertedEuler) - XMVectorGetZ(value->RefEuler)) > 0.1f)
+		//{
+		//	int a = 0;
+		//}
+	}
+
 
 	// world Position/World Rotation 생성
 	for (auto const& value : SortedJointArray)
@@ -856,6 +982,12 @@ void FBVHFrame::ExportMOTION(std::string & outData, bool bQuaternion)
 			outData += " " + std::to_string(XMVectorGetY(value.Rotation)*convertRad2Deg);
 			outData += " " + std::to_string(XMVectorGetZ(value.Rotation)*convertRad2Deg);
 
+			if (std::isnan(XMVectorGetX(value.Rotation)) ||
+				std::isnan(XMVectorGetY(value.Rotation)) ||
+				std::isnan(XMVectorGetZ(value.Rotation)))
+			{
+				int a = 0;
+			}
 			//outData += " " + std::to_string(std::get<0>(value.Rotation));
 			//outData += " " + std::to_string(std::get<1>(value.Rotation));
 			//outData += " " + std::to_string(std::get<2>(value.Rotation));

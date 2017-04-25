@@ -23,7 +23,9 @@ enum EKinectJointBoneDirection
 	EKinectJointBoneDirection_NZ,
 };
 
-inline void QuaternionToEulerAngles(const XMVECTOR& inQuat, XMVECTOR& outEulerianAngles)
+void QuaternionToEulerAngles(const XMVECTOR& inQuat, XMVECTOR& outEulerianAngles);
+
+inline void QuaternionToEulerAngles2(const XMVECTOR& inQuat, XMVECTOR& outEulerianAngles)
 {
 	float q1x = XMVectorGetX(inQuat);
 	float q1y = XMVectorGetY(inQuat);
@@ -53,9 +55,7 @@ inline void QuaternionToEulerAngles(const XMVECTOR& inQuat, XMVECTOR& outEuleria
 		bank = atan2(2 * q1x*q1w - 2 * q1y*q1z, 1 - 2 * sqx - 2 * sqz);
 	}
 
-	outEulerianAngles = XMVectorSetX(outEulerianAngles, heading);
-	outEulerianAngles = XMVectorSetY(outEulerianAngles, attitude);
-	outEulerianAngles = XMVectorSetZ(outEulerianAngles, bank);
+	outEulerianAngles = { heading, attitude, bank, 0.0f };
 
 	//std::get<0>(outEulerianAngles) = heading;			// pitch
 	//std::get<1>(outEulerianAngles) = attitude;			// yaw
@@ -122,6 +122,8 @@ struct FBVHJoint
 
 	XMVECTOR RefQuat;							// ref quaternion
 	XMVECTOR InvRefQuat;						// inverse of ref quaternion
+
+	XMVECTOR RefEuler;
 
 	XMVECTOR WorldPosition;	// position | World Coordinate
 	XMVECTOR WorldQuat;
@@ -213,6 +215,7 @@ public:
 	void End();
 
 	void ImportRefPoseByBVHFile(const std::string& inFileName);
+	void ImportRefPoseByBVHFile2(const std::string& inFileName);
 
 	void DataValidationTest();
 
